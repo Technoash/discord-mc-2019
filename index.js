@@ -15,6 +15,11 @@ const s3 = new AWS.S3();
 
 const CronJob = require('cron').CronJob;
 
+let serverName = "SERVER NAME";
+
+let lastPlayers = [];
+let botChannel;
+
 Array.prototype.diff = function(a) {
     return this.filter((i) => a.indexOf(i) < 0);
 };
@@ -35,7 +40,7 @@ new CronJob('0 0 */6 * * *', () => {
     }
 }, null, true, 'Australia/Sydney');
 
-backupCron();
+
 
 async function backup() {
     const { stdout, stderr } = await exec('../mc/minecraft backup');
@@ -68,7 +73,7 @@ async function backupCron(){
     await deleteFolderContents(backupsFolederPath);
     const filename = await backup();
     const url = await uploadFileS3(filename);
-    sendMessage(`Backup created: download here: ${url}`);
+    sendMessage(`:card_box: Backup of *${serverName}* created. download here: ${url}`);
 }
 
 function deleteFolderContents(directory){
@@ -85,16 +90,30 @@ function deleteFolderContents(directory){
     })
 }
 
-let serverName = "SERVER NAME";
 
-let lastPlayers = [];
-let botChannel;
 client.login(config.get('discord.bot_secret'))
 
 client.on('ready', () => {
     console.log("Connected as " + client.user.tag)
     botChannel = client.channels.get(config.get('discord.channel'))
+
+    botChannel.client.on('message', (msg)=>{
+        if(msg.author.bot) return;
+
+        switch(msg.content) {
+            case '/players':
+                listPlayers();
+                break;
+            default:
+
+        }
+    })
 })
+
+function listPlayers(){
+    let message = `:family_wwbb: \`${lastPlayers.length}\` player${(lastPlayers.length == 1)?'':'s'} on *${serverName}*${lastPlayers.length?':':''}  ${lastPlayers.map(a => '`'+a+'`').join(',')}`;
+    sendMessage(message);
+}
 
 function handleQuery(res){
     serverName = res.motd;
@@ -121,3 +140,5 @@ function sendMessage(msg){
 //         console.log(` -- ${channel.name} (${channel.type}) - ${channel.id}`)
 //     })
 // })
+
+backupCron();
