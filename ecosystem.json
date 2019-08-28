@@ -1,0 +1,5 @@
+{
+    "name" : "gsc-node-app",
+    "script" : "index.js",
+    "cwd" : "/home/ubuntu/discord-mc-2019"
+}
