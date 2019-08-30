@@ -1,24 +1,19 @@
 const Discord = require('discord.js')
-const client = new Discord.Client()
 const Query = require("minecraft-query");
-const q = new Query({host: '127.0.0.1', port: 25565, timeout: 3000});
 const fs = require('fs');
 const util = require('util');
 const exec = util.promisify(require('child_process').exec);
 const AWS = require('aws-sdk');
-const backupsFolederPath = '../backups_mc';
 const path = require('path');
 const config = require('config');
 
 AWS.config.update({ accessKeyId: config.get('aws.accessKeyId'), secretAccessKey: config.get('aws.secretAccessKey') });
+
 const s3 = new AWS.S3();
+const q = new Query({host: '127.0.0.1', port: 25565, timeout: 3000});
+const client = new Discord.Client()
 
 const CronJob = require('cron').CronJob;
-
-let serverName = "SERVER NAME";
-
-let lastPlayers = [];
-let botChannel;
 
 Array.prototype.diff = function(a) {
     return this.filter((i) => a.indexOf(i) < 0);
@@ -70,13 +65,21 @@ function uploadFileS3(filename){
 
 
 async function backupCron(){
-    await deleteFolderContents(backupsFolederPath);
-    const filename = await backup();
-    const url = await uploadFileS3(filename);
-    sendMessage(`:card_box: Backup of *${serverName}* created. download here: ${url}`);
+    if(backupInProgress) return sendMessage(':card_box: Backup already in progress');
+    sendMessage(':card_box: Starting backup');
+    backupInProgress = true;
+    try {
+        await deleteFolderContents(backupsFolederPath);
+        const filename = await backup();
+        const url = await uploadFileS3(filename);
+        sendMessage(`:card_box: Backup of *${serverName}* created. download here: ${url}`);
+    } finally {
+        backupInProgress = false;
+    }
 }
 
 function deleteFolderContents(directory){
+    if(!directory || path.resolve(directory).substring(0, 13) != "/home/ubuntu/") throw Error('Wrong directory! ' + directory); 
     return new Promise((res,rej)=>{
         fs.readdir(directory, (err, files) => {
             if (err) res(err);
@@ -89,26 +92,6 @@ function deleteFolderContents(directory){
         });
     })
 }
-
-
-client.login(config.get('discord.bot_secret'))
-
-client.on('ready', () => {
-    console.log("Connected as " + client.user.tag)
-    botChannel = client.channels.get(config.get('discord.channel'))
-
-    botChannel.client.on('message', (msg)=>{
-        if(msg.author.bot) return;
-
-        switch(msg.content) {
-            case '/players':
-                listPlayers();
-                break;
-            default:
-
-        }
-    })
-})
 
 function listPlayers(){
     let message = `:family_wwbb: \`${lastPlayers.length}\` player${(lastPlayers.length == 1)?'':'s'} on *${serverName}*${lastPlayers.length?':':''}  ${lastPlayers.map(a => '`'+a+'`').join(',')}`;
@@ -132,13 +115,57 @@ function sendMessage(msg){
     console.log('Sending message: ', msg)
 }
 
-// client.guilds.forEach((guild) => {
-//     console.log(" - ", guild.name, guild.id)
 
-//     // List all channels
-//     guild.channels.forEach((channel) => {
-//         console.log(` -- ${channel.name} (${channel.type}) - ${channel.id}`)
-//     })
-// })
+let backupInProgress = false;
+let serverName = "SERVER NAME";
+const backupsFolederPath = '../backups_mc';
+let lastPlayers = [];
+let botChannel;
 
-backupCron();
+
+client.login(config.get('discord.bot_secret'))
+
+client.on('ready', () => {
+    console.log(`Connected as: ${client.user.tag}`)
+
+
+    //botChannel = client.channels.get(config.get('discord.channel'))
+    botChannel = client.channels.get(config.get('discord.test_channel'))
+
+    console.log(`To channel: ${botChannel.name}`)
+
+
+    // handle commands
+    botChannel.client.on('message', (msg)=>{
+        if(msg.author.bot || msg.content[0] != '/') return;
+        const parts = msg.content.replace(/\s\s+/g, ' ').split(' ');
+        switch(parts[0]) {
+            case '/help':
+                sendMessage(':scroll: **Commands:** \n`/help`: list commands, \n`/players`: list players, \n`/backup`: generate a backup, \n`/map`: generate a map, \n`/logs <n>`: print *n* lines of the server log');
+                break;
+            case '/players':
+                listPlayers();
+                break;
+            case '/backup':
+                backupCron();
+                break;
+            case '/logs':
+                printLogs(parts);
+                break;
+            default:
+        }
+    })
+
+    // client.guilds.forEach((guild) => {
+    //     console.log(" - ", guild.name, guild.id)
+
+    //     // List all channels
+    //     guild.channels.forEach((channel) => {
+    //         console.log(` -- ${channel.name} (${channel.type}) - ${channel.id}`)
+    //     })
+    // })
+})
+
+
+
+//backupCron();
