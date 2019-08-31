@@ -6,6 +6,7 @@ const exec = util.promisify(require('child_process').exec);
 const AWS = require('aws-sdk');
 const path = require('path');
 const config = require('config');
+const mime = require('mime');
 
 AWS.config.update({ accessKeyId: config.get('aws.accessKeyId'), secretAccessKey: config.get('aws.secretAccessKey') });
 
@@ -19,7 +20,7 @@ Array.prototype.diff = function(a) {
     return this.filter((i) => a.indexOf(i) < 0);
 };
 
-
+//every 10 seconds
 new CronJob('*/10 * * * * *', () => {
     q.fullStat()
         .then(success => handleQuery(success))
@@ -34,8 +35,6 @@ new CronJob('0 0 */6 * * *', () => {
         console.error(`Could not back up`, e)
     }
 }, null, true, 'Australia/Sydney');
-
-
 
 async function backup() {
     const { stdout, stderr } = await exec('../mc/minecraft backup');
@@ -62,7 +61,6 @@ function uploadFileS3(filename){
         });
     })
 }
-
 
 async function backupCron(){
     if(backupInProgress) return sendMessage(':card_box: Backup already in progress');
@@ -115,13 +113,69 @@ function sendMessage(msg){
     console.log('Sending message: ', msg)
 }
 
+async function printLogs(parts){
+
+    // head -n $(wc -l test | awk '{print $1-2}') test | tail -n5
+    try {
+        let n = 10;
+        try {
+            if(parts.length > 1) n = parseInt(parts[1]);
+            if(isNaN(n)) throw new Error('*n* should be a number');
+            if(n < 1) throw new Error('*n* should be greater than 0');
+        } catch(e){
+            throw new Error(`Invalid input: ${e.message}`);
+        }
+
+        let offset = 0;
+        try {
+            if(parts.length > 2) offset = parseInt(parts[2]);
+            if(isNaN(offset)) throw new Error('*offset* should be a number');
+            if(offset < 0) throw new Error('*offset* should be positive');
+        } catch(e){
+            throw new Error(`Invalid input: ${e.message}`);
+        }
+
+        let logFile = path.resolve('../mc/logs/latest.log');
+        const { stdout, stderr } = await exec(`head -n $(wc -l ${logFile} | awk '{print $1-${offset}}') ${logFile} | tail -n${n}`);
+
+        if(stdout.length + 8 > 2000) throw new Error('Logs too long. Try printing fewer lines');
+        sendMessage('```\n'+stdout+'\n```');
+    }
+    catch(e) {
+        console.log(e);
+        sendMessage(`Could not print log: ${e.message}`);
+    }
+}
+
+
+async function syncMapSite(){
+    const { stdout, stderr } = await exec("s3-deploy '/home/ubuntu/worldrender/**' --cwd '/home/ubuntu/worldrender/' --region ap-southeast-2 --bucket minecraft-map-aug-2019-server");
+    const lines = stdout.split('\n');
+    if(lines.length < 2 || lines[lines.length-2] != 'Upload finished') throw new Error(`Got error while syncing map site stderr: ${stderr}`);
+}
+
+async function genMapSite(){
+    if(mapGenerateInProgress) return sendMessage(":map: Already generating map!");
+    try{
+        mapGenerateInProgress = true;
+        sendMessage(":map: Generating map")
+        const { stdout, stderr } = await exec("/home/ubuntu/Minecraft-Overviewer/overviewer.py --rendermodes smooth_lighting /home/ubuntu/mc/5d6103ed90aec /home/ubuntu/worldrender");
+        if(stderr) throw new Error('Got error while generating map site ' + stderr);
+        sendMessage(":map: Nearly done...")
+        await syncMapSite();
+        sendMessage(":map: Map generated. View at: http://minecraft-map-aug-2019-server.s3-website-ap-southeast-2.amazonaws.com")
+    }
+    finally{
+        mapGenerateInProgress = false;
+    }
+}
 
 let backupInProgress = false;
+let mapGenerateInProgress = false;
 let serverName = "SERVER NAME";
 const backupsFolederPath = '../backups_mc';
 let lastPlayers = [];
 let botChannel;
-
 
 client.login(config.get('discord.bot_secret'))
 
@@ -129,8 +183,8 @@ client.on('ready', () => {
     console.log(`Connected as: ${client.user.tag}`)
 
 
-    //botChannel = client.channels.get(config.get('discord.channel'))
-    botChannel = client.channels.get(config.get('discord.test_channel'))
+    botChannel = client.channels.get(config.get('discord.channel'))
+    //botChannel = client.channels.get(config.get('discord.test_channel'))
 
     console.log(`To channel: ${botChannel.name}`)
 
@@ -139,9 +193,11 @@ client.on('ready', () => {
     botChannel.client.on('message', (msg)=>{
         if(msg.author.bot || msg.content[0] != '/') return;
         const parts = msg.content.replace(/\s\s+/g, ' ').split(' ');
+        const parsedArgs = parts.slice(1);
+
         switch(parts[0]) {
             case '/help':
-                sendMessage(':scroll: **Commands:** \n`/help`: list commands, \n`/players`: list players, \n`/backup`: generate a backup, \n`/map`: generate a map, \n`/logs <n>`: print *n* lines of the server log');
+                sendMessage(':scroll: **Commands:** \n`/help`: list commands, \n`/players`: list players, \n`/backup`: generate a backup, \n`/map`: generate/update the map site, \n`/logs <n> <offset>`: print *n* lines of the server log');
                 break;
             case '/players':
                 listPlayers();
@@ -152,10 +208,13 @@ client.on('ready', () => {
             case '/logs':
                 printLogs(parts);
                 break;
+            case '/map':
+                genMapSite(parts);
+                break;
             default:
         }
     })
-
+    
     // client.guilds.forEach((guild) => {
     //     console.log(" - ", guild.name, guild.id)
 
@@ -165,7 +224,5 @@ client.on('ready', () => {
     //     })
     // })
 })
-
-
-
 //backupCron();
+

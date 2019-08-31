@@ -21,6 +21,7 @@
     "config": "^3.2.2",
     "cron": "^1.7.1",
     "discord.js": "^11.5.1",
+    "mime": "^2.4.4",
     "minecraft-query": "^1.0.7",
     "moment": "^2.24.0"
   }
