@@ -36,6 +36,30 @@ new CronJob('0 0 */6 * * *', () => {
     }
 }, null, true, 'Australia/Sydney');
 
+async function mcIsRunning(){
+    const { stdout, stderr } = await exec('/home/ubuntu/mc/minecraft status');
+    if(stderr) throw new Error('Got error while checking server status: ' + stderr);
+    if(stdout.substr(stdout.length - 16) == 'is not running.\n') return false;
+    if(stdout.substr(stdout.length - 12) == 'is running.\n') return true;
+    throw new Error('Not running or not running')
+}
+
+async function mcStop(){
+    const { stdout, stderr } = await exec('/home/ubuntu/mc/minecraft stop');
+    if(stderr) throw new Error('Got error while stopping: ' + stderr);
+    if(stdout.substr(stdout.length - 12) == 'is stopped.\n') return true;
+    console.log('stdout', stdout, 'stderr', stderr);
+    throw new Error('Did not stop')
+}
+
+async function mcStart(){
+    const { stdout, stderr } = await exec('/home/ubuntu/mc/minecraft start');
+    if(stderr) throw new Error('Got error while starting: ' + stderr);
+    if(stdout.substr(stdout.length - 16) == 'is now running.\n') return true;
+    console.log('stdout', stdout, 'stderr', stderr);
+    throw new Error('Did not start')
+}
+
 async function backup() {
     const { stdout, stderr } = await exec('../mc/minecraft backup');
     if(stderr) throw new Error('Got error while backing up ' + stderr);
@@ -71,6 +95,10 @@ async function backupCron(){
         const filename = await backup();
         const url = await uploadFileS3(filename);
         sendMessage(`:card_box: Backup of *${serverName}* created. download here: ${url}`);
+    }
+    catch(e) {
+        sendMessage(':card_box::interrobang: unable to back up: ' + e.message)
+        throw e;
     } finally {
         backupInProgress = false;
     }
@@ -157,6 +185,9 @@ async function syncMapSite(){
 async function genMapSite(){
     if(mapGenerateInProgress) return sendMessage(":map: Already generating map!");
     try{
+        sendMessage(":map: Stopping server to generate map");
+        await mcStop();
+        sendMessage(":map: Server stopped");
         mapGenerateInProgress = true;
         sendMessage(":map: Generating map")
         const { stdout, stderr } = await exec("/home/ubuntu/Minecraft-Overviewer/overviewer.py --rendermodes smooth_lighting /home/ubuntu/mc/5d6103ed90aec /home/ubuntu/worldrender");
@@ -167,6 +198,9 @@ async function genMapSite(){
     }
     finally{
         mapGenerateInProgress = false;
+        sendMessage(":map: Starting server");
+        await mcStart();
+        sendMessage(":map: Server started");
     }
 }
 
