@@ -27,8 +27,8 @@ new CronJob('*/10 * * * * *', () => {
 }, null, true, 'Australia/Sydney');
 
 
-//every 6 hours
-new CronJob('0 0 */6 * * *', () => {
+//every day at 4am
+new CronJob('0 0 4 * * *', () => {
     try{
         backupCron();
     } catch(e){
@@ -197,9 +197,9 @@ async function genMapSite(){
         sendMessage(":map: Map generated. View at: http://minecraft-map-aug-2019-server.s3-website-ap-southeast-2.amazonaws.com")
     }
     finally{
-        mapGenerateInProgress = false;
         sendMessage(":map: Starting server");
         await mcStart();
+        mapGenerateInProgress = false;
         sendMessage(":map: Server started");
     }
 }
