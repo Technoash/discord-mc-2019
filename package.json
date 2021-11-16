@@ -17,7 +17,7 @@
   },
   "homepage": "https://github.com/Technoash/discord-mc-2019#readme",
   "dependencies": {
-    "aws-sdk": "^2.518.0",
+    "aws-sdk": "^2.814.0",
     "config": "^3.2.2",
     "cron": "^1.7.1",
     "discord.js": "^11.5.1",
